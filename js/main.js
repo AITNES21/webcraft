@@ -140,27 +140,28 @@ class ContactForm {
         this.showMessage('Enviando mensaje...', 'info');
 
         try {
-            // Aquí iría la llamada al backend
-            // Por ahora, simulamos el envío
-            await this.sendFormData(data);
+            // Enviar con Formspree
+            await this.sendToFormspree(data);
 
             // Muestra mensaje de éxito
             const successMessage = window.i18n ?
                 window.i18n.getTranslation('contact.form.success') :
-                '¡Mensaje enviado con éxito! Te contactaremos pronto.';
+                '✅ ¡Mensaje enviado con éxito! Te contactaremos pronto.';
 
             this.showMessage(successMessage, 'success');
             this.form.reset();
 
-            // Opcional: Enviar a Google Sheets, Formspree, etc.
-            // this.sendToFormspree(data);
+            // Registrar evento
+            if (window.WebCraft && window.WebCraft.Analytics) {
+                Analytics.trackFormSubmission();
+            }
 
         } catch (error) {
             console.error('Error:', error);
 
             const errorMessage = window.i18n ?
                 window.i18n.getTranslation('contact.form.error') :
-                'Hubo un error al enviar el mensaje. Por favor, inténtalo de nuevo.';
+                '❌ Hubo un error al enviar el mensaje. Por favor, inténtalo de nuevo.';
 
             this.showMessage(errorMessage, 'error');
         }
@@ -183,54 +184,55 @@ class ContactForm {
         return true;
     }
 
-    async sendFormData(data) {
-        // Simulación de envío (2 segundos)
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // Aquí iría la lógica real de envío
-        // Ejemplo con fetch:
-        /*
-        const response = await fetch('/api/contact', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-            throw new Error('Error al enviar el formulario');
+    /**
+     * Enviar datos a Formspree
+     * Requiere:
+     * 1. Cuenta en https://formspree.io
+     * 2. ID del formulario en js/config.js
+     */
+    async sendToFormspree(data) {
+        // Verificar que el CONFIG esté disponible
+        if (typeof CONFIG === 'undefined' || !CONFIG.FORMSPREE_ID) {
+            throw new Error('Formspree ID no configurado. Ve a js/config.js');
         }
 
-        return await response.json();
-        */
+        // Verificar que el ID sea válido (no sea el placeholder)
+        if (CONFIG.FORMSPREE_ID === 'xyzabc123') {
+            throw new Error('Por favor, configura tu ID de Formspree en js/config.js');
+        }
 
-        // Log para desarrollo
-        console.log('Datos del formulario:', data);
+        // Crear objeto para enviar (Formspree espera ciertos campos)
+        const formspreeData = {
+            name: data.name,
+            email: data.email,
+            phone: data.phone || 'No proporcionado',
+            subject: data.subject,
+            message: data.message,
+            _subject: `Nuevo mensaje de contacto de ${data.name}`,
+            _replyto: data.email,
+            _captcha: false // Desactivar captcha para desarrollo
+        };
 
-        return { success: true };
-    }
-
-    // Método opcional para enviar a Formspree u otros servicios
-    async sendToFormspree(data) {
-        const FORMSPREE_ID = 'YOUR_FORMSPREE_ID'; // Reemplazar con tu ID
-
-        const response = await fetch(`https://formspree.io/f/${FORMSPREE_ID}`, {
+        const response = await fetch(`https://formspree.io/f/${CONFIG.FORMSPREE_ID}`, {
             method: 'POST',
             headers: {
+                'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(data),
+            body: JSON.stringify(formspreeData),
         });
 
         if (!response.ok) {
-            throw new Error('Error al enviar a Formspree');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error al enviar el formulario');
         }
 
         return await response.json();
     }
 
     showMessage(message, type) {
+        if (!this.messageDiv) return;
+        
         this.messageDiv.textContent = message;
         this.messageDiv.className = `form-message ${type}`;
         this.messageDiv.style.display = 'block';
